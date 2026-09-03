@@ -1,0 +1,64 @@
+# Trading Oracle -- default configuration
+#
+# This file is the single source of truth for structural/behavioural
+# settings. It is loaded and SHA-256 hashed by src/utils/config.py; the
+# resulting config_hash is stamped on every signal and log record so any
+# decision can be traced back to the exact config that produced it
+# (master spec, section 16 -- audit & reproducibility).
+#
+# Secrets (API keys, tokens) never live here -- see .env.example. Only
+# behavioural values belong in this file, because they are hashed and that
+# hash may appear in logs, dashboards, and version control history.
+
+mode: PAPER # PAPER only. Spec section 21: never LIVE by default, ever.
+code_version: "v2.0.0-phase1"
+
+timezone:
+  name: "Asia/Kolkata"
+  utc_offset: "+05:30"
+
+session:
+  pre_open_start: "09:00"
+  pre_open_match_start: "09:08"
+  normal_open: "09:15"
+  normal_close: "15:30"
+  closing_session_start: "15:40"
+  closing_session_end: "16:00"
+  # Broker-dependent -- must stay configurable, spec section 5.1.
+  square_off_time: "15:15"
+  no_new_entry_buffer_minutes: 10
+
+data:
+  provider: "zerodha_kite" # Phase 2 wires this up; not yet implemented.
+  freshness_seconds:
+    "1min": 90
+    "5min": 300
+    "15min": 720
+    daily: 86400
+
+risk:
+  max_risk_per_trade_pct: 1.0
+  max_daily_loss_pct: 3.0
+  max_open_positions: 3
+  max_sector_exposure_pct: 40.0
+  max_trades_per_day: 6
+  consecutive_loss_cooldown_trades: 3
+  consecutive_loss_cooldown_minutes: 60
+
+costs:
+  brokerage_flat_per_order: 20.0
+  stt_pct_sell_side: 0.025
+  exchange_txn_charge_pct: 0.00297
+  sebi_turnover_fee_pct: 0.0001
+  stamp_duty_pct_buy_side: 0.003
+  gst_pct_on_charges: 18.0
+
+execution:
+  min_risk_reward_net_of_costs: 1.8
+
+paper_trading:
+  starting_capital_inr: 100000.0
+
+logging:
+  level: INFO
+  file: "oracle.log"
