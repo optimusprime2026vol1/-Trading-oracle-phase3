@@ -37,8 +37,8 @@ when its exit criterion is demonstrably met -- not when it feels finished.
 | Phase | Deliverable | Exit criterion | Status |
 |---|---|---|---|
 | 1 | Repo, config, logging | Config hashing works, logs reproducible | **Done** -- see `tests/unit/test_config.py`, `tests/unit/test_logging.py` |
-| 2 | Data layer + integrity contract | All section 3.5 checks passing on live feed | **Code complete, awaiting your live run** -- `Bar` contract, all section 3.5 structural checks, freshness (3.2), the provider interface, `HistoricalCsvProvider`, and `ZerodhaKiteProvider` (instrument resolution + historical/latest fetch) are built and unit-tested (47 tests, see `tests/unit/`). `ZerodhaKiteProvider`'s logic is proven against a fake Kite client in tests; the exit criterion itself -- checks passing *on a live feed* -- can only be confirmed by running it with your real credentials (`scripts/generate_kite_session.py`), since this environment has no network path to Zerodha's servers. |
-| 3 | Indicators | Unit tests match reference values exactly | **Done** -- EMA, RSI, ATR, MACD, VWAP, RVOL, Bollinger, each cross-checked against an independently-written reference calculation in its test file (`tests/unit/test_ema.py`, `test_rsi.py`, `test_atr.py`, `test_macd.py`, `test_vwap.py`, `test_bollinger.py`, `test_rvol.py`). All warm-up thresholds from spec 6.1 enforced -- an indicator never returns a value before its bar count says it should. |
+| 2 | Data layer + integrity contract | All section 3.5 checks passing on live feed | **Code complete, awaiting your live run** -- `Bar` contract, all section 3.5 structural checks, freshness (3.2), the provider interface, `HistoricalCsvProvider`, and `ZerodhaKiteProvider` (instrument resolution + historical/latest fetch) are built and unit-tested (see `tests/unit/`). `ZerodhaKiteProvider`'s logic is proven against a fake Kite client in tests; the exit criterion itself -- checks passing *on a live feed* -- can only be confirmed by running it with your real credentials (`scripts/generate_kite_session.py`). |
+| 3 | Indicators | Unit tests match reference values exactly | **Done** -- EMA, RSI, ATR, MACD, VWAP, RVOL, Bollinger, each cross-checked against an independently-written reference calculation in its test file. All warm-up thresholds from spec 6.1 enforced. |
 | 4 | Gates | Every gate demonstrably blocks its condition | Not started |
 | 5 | Scanner | Runs a full session without integrity failure | Not started |
 | 6 | Strategies + regime gating | Each strategy fires only in permitted regimes | Not started |
@@ -51,10 +51,6 @@ when its exit criterion is demonstrably met -- not when it feels finished.
 
 ## Repository layout
 
-Only directories a completed phase actually needs exist yet. Later phases
-add `src/data/`, `src/gates/`, `src/strategies/`, etc. as they start --
-see spec section 19 for the full target layout.
-
 ```
 trading-oracle/
 ├── config/               versioned, hashed behavioural config
@@ -66,8 +62,13 @@ trading-oracle/
 │   │       ├── base.py            DataProvider interface
 │   │       ├── historical_csv.py  offline provider, no credentials needed
 │   │       └── zerodha_kite.py    live provider, needs .env credentials
+│   ├── indicators/
+│   │   ├── _core.py           shared seeded-EMA math
+│   │   ├── ema.py, atr.py, rsi.py, macd.py
+│   │   └── vwap.py, bollinger.py, rvol.py
 │   └── utils/            config loader + hasher, structured logging
 ├── tests/unit/           unit tests proving each phase's exit criterion
+├── scripts/              generate_kite_session.py (run locally, daily)
 ├── logs/                 runtime logs (git-ignored, folder tracked)
 ├── database/             reserved for Phase 9 (paper trading records)
 ├── .github/workflows/    CI: install deps, run tests, on every push
@@ -122,6 +123,23 @@ produced a bar.
 
 All bars, from either provider, pass through `src/data/integrity.py`
 before anything downstream may use them (spec section 3.5).
+
+## Indicators (Phase 3)
+
+`src/indicators/` implements all 7 spec section 6 indicators as pure
+functions over a `Sequence[Bar]`, each returning one value per input bar
+(`None` until its warm-up threshold from spec 6.1 is met):
+
+- `ema.ema(bars, period)` -- EMA, seeded EMA, 3n warm-up
+- `atr.atr(bars, period=14)` -- Wilder ATR, 100-bar warm-up
+- `rsi.rsi(bars, period=14)` -- Wilder RSI, 100-bar warm-up
+- `macd.macd(bars)` -- returns `MacdResult(macd_line, signal_line, histogram)`
+- `vwap.vwap(bars)` -- session-anchored, resets on day change
+- `bollinger.bollinger(bars, period=20)` -- returns `BollingerResult(middle, upper, lower)`, population sigma
+- `rvol.rvol(current_session_bars, historical_sessions)` -- needs 20 prior sessions or returns all `None`
+
+Each has its own test file cross-checked against an independently-written
+reference calculation (not a call back into the module under test).
 
 ## Config and hashing
 
