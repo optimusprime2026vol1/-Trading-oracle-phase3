@@ -36,6 +36,13 @@ data:
     "15min": 720
     daily: 86400
 
+liquidity:
+  # Spec section 5.4 -- liquidity floor, configurable defaults.
+  min_avg_traded_value_inr: 5000000.0 # 50 lakh/day minimum, 20-day average
+  min_avg_bar_volume: 5000 # on the decision timeframe
+  max_position_fraction_of_adv: 0.01 # market-impact cap: 1% of avg daily volume
+  max_spread_pct: 0.5 # max acceptable bid-ask spread, % of price
+
 risk:
   max_risk_per_trade_pct: 1.0
   max_daily_loss_pct: 3.0

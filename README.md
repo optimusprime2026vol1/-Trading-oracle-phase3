@@ -39,7 +39,7 @@ when its exit criterion is demonstrably met -- not when it feels finished.
 | 1 | Repo, config, logging | Config hashing works, logs reproducible | **Done** -- see `tests/unit/test_config.py`, `tests/unit/test_logging.py` |
 | 2 | Data layer + integrity contract | All section 3.5 checks passing on live feed | **Code complete, awaiting your live run** -- `Bar` contract, all section 3.5 structural checks, freshness (3.2), the provider interface, `HistoricalCsvProvider`, and `ZerodhaKiteProvider` (instrument resolution + historical/latest fetch) are built and unit-tested (see `tests/unit/`). `ZerodhaKiteProvider`'s logic is proven against a fake Kite client in tests; the exit criterion itself -- checks passing *on a live feed* -- can only be confirmed by running it with your real credentials (`scripts/generate_kite_session.py`). |
 | 3 | Indicators | Unit tests match reference values exactly | **Done** -- EMA, RSI, ATR, MACD, VWAP, RVOL, Bollinger, each cross-checked against an independently-written reference calculation in its test file. All warm-up thresholds from spec 6.1 enforced. |
-| 4 | Gates | Every gate demonstrably blocks its condition | Not started |
+| 4 | Gates | Every gate demonstrably blocks its condition | **Done** -- all 13 gates from spec section 4 implemented as pure functions (`src/gates/gates.py`) plus a `GateContext`/`evaluate_gates` runner (`src/gates/runner.py`). Every gate has a dedicated test that flips exactly one input and proves that gate -- and only that gate -- fails (`tests/unit/test_gates.py`, 28 tests). |
 | 5 | Scanner | Runs a full session without integrity failure | Not started |
 | 6 | Strategies + regime gating | Each strategy fires only in permitted regimes | Not started |
 | 7 | Risk + sizing engine | Limits provably unbreakable in tests | Not started |
@@ -66,6 +66,7 @@ trading-oracle/
 │   │   ├── _core.py           shared seeded-EMA math
 │   │   ├── ema.py, atr.py, rsi.py, macd.py
 │   │   └── vwap.py, bollinger.py, rvol.py
+│   ├── gates/             13 pre-flight gates (spec section 4)
 │   └── utils/            config loader + hasher, structured logging
 ├── tests/unit/           unit tests proving each phase's exit criterion
 ├── scripts/              generate_kite_session.py (run locally, daily)
@@ -140,6 +141,50 @@ functions over a `Sequence[Bar]`, each returning one value per input bar
 
 Each has its own test file cross-checked against an independently-written
 reference calculation (not a call back into the module under test).
+
+## Gates (Phase 4)
+
+`src/gates/` implements all 13 pre-flight gates from spec section 4. Each
+gate is a pure function returning a `GateResult` (`passed`, `gate` code,
+`detail`) -- given the same inputs it always returns the same result, and
+never reaches into global state or the clock except via an explicit
+`now_ist` parameter:
+
+| # | Gate function | Fail code |
+|---|---|---|
+| 1 | `check_data_freshness` | `STALE_DATA` |
+| 2 | `check_data_integrity` | `DATA_INTEGRITY_FAIL` |
+| 3 | `check_indicator_warmup` | `INSUFFICIENT_HISTORY` |
+| 4 | `check_symbol_not_restricted` | `SYMBOL_RESTRICTED` |
+| 5 | `check_not_under_surveillance` | `SURVEILLANCE_LIST` |
+| 6 | `check_liquidity_floor` | `ILLIQUID` |
+| 7 | `check_spread_band` | `WIDE_SPREAD` |
+| 8 | `check_trading_window` | `OUTSIDE_WINDOW` |
+| 9 | `check_no_event_risk` | `EVENT_RISK` |
+| 10 | `check_daily_loss_limit` | `RISK_LIMIT_HIT` |
+| 11 | `check_exposure_available` | `EXPOSURE_FULL` |
+| 12 | `check_risk_reward_minimum` | `RR_BELOW_MIN` |
+| 13 | `check_cooldown_not_active` | `COOLDOWN_ACTIVE` |
+
+`src/gates/runner.py`'s `evaluate_gates(GateContext) -> GateReport` runs
+all 13 in spec table order and always evaluates every gate (not just up to
+the first failure), so a future dashboard can show the state of every
+check at once. `report.first_failure` is the code a caller should use for
+the NO-TRADE output (spec section 14).
+
+Gates 4, 5, 6 (position-size check), 9, 10, 11, and 13 depend on
+infrastructure that doesn't exist yet -- a halt/circuit feed, an ASM/GSM/T2T
+list, an economic calendar, a sizing engine, and the paper-trading engine's
+trade history. Those gates take already-resolved status objects
+(`RestrictionStatus`, `SurveillanceStatus`, etc.) as input rather than
+fetching anything themselves, and default to the passing state until Phase
+5 (scanner), Phase 7 (risk engine), and Phase 9 (paper trading) wire real
+data behind them. Gates 1, 2, 3, 8, and 12's logic is fully real today --
+freshness and integrity reuse Phase 2's checks directly, indicator warm-up
+reuses Phase 3's None-until-ready contract, the trading-window gate
+computes real clock-time comparisons against `config/default.yaml`'s
+session settings, and the risk-reward gate compares an already-computed
+net RR against the configured minimum.
 
 ## Config and hashing
 
